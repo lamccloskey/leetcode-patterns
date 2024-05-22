@@ -1,10 +1,12 @@
 /* eslint-disable react/jsx-props-no-spreading */
 import React, { useState, useEffect } from 'react';
+import PropTypes from 'prop-types';
 import {
   Table as ReactTable,
   Container,
   Row,
   Badge,
+  Progress,
   NavLink,
   Button,
   Modal,
@@ -13,29 +15,35 @@ import {
 } from 'reactstrap';
 import Toggle from 'react-toggle';
 import ReactTooltip from 'react-tooltip';
+import { PieChart } from 'react-minimal-pie-chart';
 import { useTable, useFilters, useSortBy } from 'react-table';
-import { FaLock, FaExternalLinkAlt, FaQuestionCircle } from 'react-icons/fa';
+import {
+  FaLock,
+  FaExternalLinkAlt,
+  FaRandom,
+  FaQuestionCircle,
+} from 'react-icons/fa';
 import {
   DefaultColumnFilter,
   SelectDifficultyColumnFilter,
   SelectColumnFilter,
+  SelectCheckedColumnFilter,
 } from './filters';
 import { Event } from '../Shared/Tracking';
 
-import questions from '../../data';
+import questions, { updated } from '../../data';
 
 import 'react-toggle/style.css';
 import './styles.scss';
 import PatternFrequencies from '../PatternFrequencies';
 
-const iconPath = `${process.env.PUBLIC_URL}/assets/icons/`;
+const iconPath = `${process.env.PUBLIC_URL}/static/icons/`;
 
 const Table = () => {
-  const data = React.useMemo(() => questions, []);
   const [resetCount, setResetCount] = useState(0);
   let checkedList =
     JSON.parse(localStorage.getItem('checked')) ||
-    new Array(data.length).fill(false);
+    new Array(questions.length).fill(false);
 
   /* If the user has previously visited the website, then an array in
   LocalStorage would exist of a certain length which corresponds to which
@@ -43,8 +51,8 @@ const Table = () => {
   to the list, then we would need to resize and copy the existing 'checked'
   array before updating it in LocalStorage in order to transfer their saved
   progress. */
-  if (checkedList.length !== data.length) {
-    const resizedCheckedList = new Array(data.length).fill(false);
+  if (checkedList.length !== questions.length) {
+    const resizedCheckedList = new Array(questions.length).fill(false);
 
     for (let i = 0; i < checkedList.length; i += 1) {
       resizedCheckedList[i] = checkedList[i];
@@ -54,13 +62,36 @@ const Table = () => {
     window.localStorage.setItem('checked', JSON.stringify(checkedList));
   }
 
-  const difficultyMap = { Easy: 0, Medium: 0, Hard: 0 };
-  const totalDifficultyCount = { Easy: 0, Medium: 0, Hard: 0 };
-  for (let i = 0; i < data.length; i += 1) {
-    difficultyMap[data[i].difficulty] += checkedList[data[i].id];
-    totalDifficultyCount[data[i].difficulty] += 1;
+  const filteredByCheckbox = () => {
+    const checkbox = localStorage.getItem('checkbox') || '';
+    return questions.filter(question => {
+      if (!checkbox) return true;
+      return question.checkbox === checkbox;
+    });
+  };
+
+  for (let i = 0; i < questions.length; i += 1) {
+    if (checkedList[questions[i].id]) {
+      questions[i].checkbox = 'Checked';
+    } else {
+      questions[i].checkbox = 'Unchecked';
+    }
   }
 
+  const difficultyMap = { Easy: 0, Medium: 0, Hard: 0, Total: 0 };
+  const totalDifficultyCount = {
+    Easy: 0,
+    Medium: 0,
+    Hard: 0,
+    Total: questions.length,
+  };
+  for (let i = 0; i < questions.length; i += 1) {
+    difficultyMap[questions[i].difficulty] += checkedList[questions[i].id];
+    difficultyMap.Total += checkedList[questions[i].id];
+    totalDifficultyCount[questions[i].difficulty] += 1;
+  }
+
+  const [data, setData] = useState(filteredByCheckbox());
   const [difficultyCount, setDifficultyCount] = useState(difficultyMap);
   const [checked, setChecked] = useState(checkedList);
   const [showPatterns, setShowPatterns] = useState(
@@ -87,7 +118,7 @@ const Table = () => {
   const resetHandler = () => {
     setChecked(new Array(checked.length).fill(false));
     setDifficultyCount(() => {
-      return { Easy: 0, Medium: 0, Hard: 0 };
+      return { Easy: 0, Medium: 0, Hard: 0, Total: 0 };
     });
     const count = resetCount + 1;
     setResetCount(count);
@@ -106,51 +137,30 @@ const Table = () => {
               };
 
               return (
-                <span>
-                  <Badge className="" pill>
-                    <span
-                      data-tip={`You've completed ${difficultyCount.Easy +
-                        difficultyCount.Medium +
-                        difficultyCount.Hard}/${totalDifficultyCount.Easy +
-                        totalDifficultyCount.Medium +
-                        totalDifficultyCount.Hard} total questions`}
-                    >
-                      Total:{' '}
-                      {difficultyCount.Easy +
-                        difficultyCount.Medium +
-                        difficultyCount.Hard}
-                      /
-                      {totalDifficultyCount.Easy +
-                        totalDifficultyCount.Medium +
-                        totalDifficultyCount.Hard}
-                    </span>
-                  </Badge>
-                  <br />
-                  <Badge className="easy" pill>
-                    <span
-                      data-tip={`You've completed ${difficultyCount.Easy}/${totalDifficultyCount.Easy} easy questions`}
-                    >
-                      Easy: {difficultyCount.Easy}/{totalDifficultyCount.Easy}
-                    </span>
-                  </Badge>
-                  <br />
-                  <Badge className="medium" pill>
-                    <span
-                      data-tip={`You've completed ${difficultyCount.Medium}/${totalDifficultyCount.Medium} medium questions`}
-                    >
-                      Medium: {difficultyCount.Medium}/
-                      {totalDifficultyCount.Medium}
-                    </span>
-                  </Badge>
-                  <br />
-                  <Badge className="hard" pill>
-                    <span
-                      data-tip={`You've completed ${difficultyCount.Hard}/${totalDifficultyCount.Hard} hard questions`}
-                    >
-                      Hard: {difficultyCount.Hard}/{totalDifficultyCount.Hard}
-                    </span>
-                  </Badge>
-                  <br />
+                <span className="d-flex flex-column justify-content-between">
+                  <PieChart
+                    data={[
+                      {
+                        title: 'One',
+                        value: difficultyCount.Total,
+                        color: '#ffa929',
+                      },
+                    ]}
+                    totalValue={totalDifficultyCount.Total}
+                    label={() =>
+                      `${difficultyCount.Total} /
+                      ${totalDifficultyCount.Total}`
+                    }
+                    labelPosition={0}
+                    labelStyle={{
+                      // Needed for Dark Reader to work
+                      fill: 'black',
+                    }}
+                    startAngle={-90}
+                    lineWidth={12}
+                    className="progress-pie"
+                    background="#e9ecef"
+                  />
                   <Button
                     className="reset-button"
                     outline
@@ -174,7 +184,12 @@ const Table = () => {
                 </span>
               );
             },
-            id: 'Checkbox',
+            accessor: 'checkbox',
+            id: 'checkbox',
+            filterByCheckbox: () => {
+              setData(filteredByCheckbox());
+            },
+            disableSortBy: true,
             Cell: cellInfo => {
               return (
                 <span data-tip={`Question #${Number(cellInfo.row.id) + 1}`}>
@@ -185,35 +200,101 @@ const Table = () => {
                       checked[cellInfo.row.original.id] = !checked[
                         cellInfo.row.original.id
                       ];
-
+                      const question = questions.find(
+                        q => q.id === cellInfo.row.original.id,
+                      );
+                      if (checked[cellInfo.row.original.id]) {
+                        question.checkbox = 'Checked';
+                      } else {
+                        question.checkbox = 'Unchecked';
+                      }
                       const additive = checked[cellInfo.row.original.id]
                         ? 1
                         : -1;
                       difficultyCount[
                         cellInfo.row.original.difficulty
                       ] += additive;
+                      difficultyCount.Total += additive;
                       setDifficultyCount(difficultyCount);
                       setChecked([...checked]);
+                      setData(filteredByCheckbox());
                     }}
                   />
                 </span>
               );
             },
+            Filter: SelectCheckedColumnFilter,
           },
           {
-            Header: 'Questions',
+            /* eslint-disable react/prop-types */
+            Header: ({ filteredRows }) => {
+              const disableRandomQuestionButton = filteredRows.length === 0;
+
+              const randomQuestion = () => {
+                const random = Math.floor(Math.random() * filteredRows.length);
+                const randomFilteredRow = filteredRows[random];
+                const questionSlug = randomFilteredRow.original.slug;
+                /* eslint-enable react/prop-types */
+
+                window.open(
+                  `https://leetcode.com/problems/${questionSlug}/`,
+                  '_blank',
+                );
+              };
+              return (
+                <>
+                  <div id="difficultyProgress">
+                    <ProgressBar
+                      style={{ marginBottom: 10 }}
+                      name="Easy"
+                      value={difficultyCount.Easy}
+                      total={totalDifficultyCount.Easy}
+                      barClassName="easy"
+                    />
+                    <ProgressBar
+                      name="Medium"
+                      value={difficultyCount.Medium}
+                      total={totalDifficultyCount.Medium}
+                      barClassName="medium"
+                    />
+                    <ProgressBar
+                      name="Hard"
+                      value={difficultyCount.Hard}
+                      total={totalDifficultyCount.Hard}
+                      barClassName="hard"
+                    />
+                  </div>
+                  <div
+                    style={{ whiteSpace: 'nowrap', display: 'inline-block' }}
+                  >
+                    Questions{' '}
+                    <Button
+                      disabled={disableRandomQuestionButton}
+                      onClick={randomQuestion}
+                      color="dark"
+                      id="random-question-button"
+                      size="sm"
+                    >
+                      <span data-tip="Try a random question!">
+                        <FaRandom />
+                      </span>
+                    </Button>
+                  </div>
+                </>
+              );
+            },
             accessor: 'questions',
             disableSortBy: true,
             Cell: cellInfo => {
               return (
                 <NavLink
                   target="_blank"
-                  href={cellInfo.row.original.url}
+                  href={`https://leetcode.com/problems/${cellInfo.row.original.slug}/`}
                   onClick={() => {
                     Event(
                       'Table',
-                      'Clicked question url',
-                      `${cellInfo.row.original.name} question url`,
+                      'Clicked question title',
+                      `${cellInfo.row.original.title} question title`,
                     );
                   }}
                 >
@@ -224,7 +305,7 @@ const Table = () => {
                   ) : (
                     ''
                   )}
-                  {cellInfo.row.original.name}
+                  {cellInfo.row.original.title}
                 </NavLink>
               );
             },
@@ -235,9 +316,7 @@ const Table = () => {
             accessor: 'solutions',
             disableSortBy: true,
             Cell: cellInfo => {
-              const url = cellInfo.row.original.premium
-                ? `${cellInfo.row.original.url}/`
-                : cellInfo.row.original.url;
+              const url = `https://leetcode.com/problems/${cellInfo.row.original.slug}/`;
               return (
                 <NavLink
                   target="_blank"
@@ -246,7 +325,7 @@ const Table = () => {
                     Event(
                       'Table',
                       'Clicked solution',
-                      `${cellInfo.row.original.name} solution`,
+                      `${cellInfo.row.original.slug} solution`,
                     );
                   }}
                 >
@@ -324,20 +403,28 @@ const Table = () => {
           },
           {
             Header: () => {
+              const date = new Date(updated);
+              const month = date.toLocaleString('default', {
+                month: 'long',
+              });
+              const day = date.getDate();
+              const year = date.getFullYear();
               return (
                 <>
                   <div
                     style={{ whiteSpace: 'nowrap', display: 'inline-block' }}
                   >
                     Companies{' '}
-                    <span data-tip="Companies retrieved from Leetcode Premium (January 2022)">
+                    <span
+                      data-tip={`Companies that have asked these questions in the past year; retrieved from Leetcode Premium on ${month} ${day}, ${year} - thanks to @leo-step!`}
+                    >
                       <FaQuestionCircle />
                     </span>
                   </div>
                 </>
               );
             },
-            accessor: 'companies',
+            accessor: 'companyNames',
             sortType: (a, b) => {
               if (a.original.companies.length === b.original.companies.length) {
                 return 0;
@@ -347,13 +434,15 @@ const Table = () => {
                 : -1;
             },
             Cell: cellInfo => {
+              const questionSlug = cellInfo.row.original.slug;
               const companies = cellInfo.row.original.companies.map(company => {
+                const tooltipText = `Asked by ${company.name} ${company.frequency} times`;
                 return (
                   <img
-                    key={company}
-                    src={`${iconPath}${company}.png`}
-                    alt={company}
-                    data-tip={company}
+                    key={`${questionSlug}-${company.name}`}
+                    src={`${iconPath}${company.slug}.png`}
+                    alt={company.name}
+                    data-tip={tooltipText}
                   />
                 );
               });
@@ -385,6 +474,10 @@ const Table = () => {
       initialState: {
         filters: [
           {
+            id: 'checkbox',
+            value: localStorage.getItem('checkbox') || '',
+          },
+          {
             id: 'difficulty',
             value: localStorage.getItem('difficulty') || '',
           },
@@ -393,8 +486,8 @@ const Table = () => {
             value: localStorage.getItem('pattern') || '',
           },
           {
-            id: 'companies',
-            value: localStorage.getItem('companies') || '',
+            id: 'companyNames',
+            value: localStorage.getItem('companyNames') || '',
           },
         ],
       },
@@ -446,6 +539,37 @@ const Table = () => {
       </ReactTable>
     </Container>
   );
+};
+
+const ProgressBar = ({ name, value, total, className, barClassName }) => {
+  return (
+    <div>
+      <div className="d-flex justify-content-between">
+        <div>{name}</div>
+        <div>
+          {value}/{total}
+        </div>
+      </div>
+      <Progress
+        className={className}
+        barClassName={barClassName}
+        value={(value / total) * 100}
+      />
+    </div>
+  );
+};
+
+ProgressBar.propTypes = {
+  name: PropTypes.string.isRequired,
+  value: PropTypes.number.isRequired,
+  total: PropTypes.number.isRequired,
+  className: PropTypes.string,
+  barClassName: PropTypes.string,
+};
+
+ProgressBar.defaultProps = {
+  className: 'progress-bar-sm',
+  barClassName: null,
 };
 
 export default Table;
